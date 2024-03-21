@@ -350,9 +350,9 @@ int main(int argc, char** argv)
 
 				XorData(DEFAULT_XOR_KEY, std::span<uint8_t>(fileData, fileSize));
 
-				if(gameGeneration == GG_WRC10)
+				if(gameGeneration == GG_WRC10 || gameGeneration == GG_WRC9)
 				{
-					std::cout << "For some reason the last 5 bytes of the WRC10 settings file use a different key, attempting to fix..." << std::endl;
+					std::cout << "For some reason the last 5 bytes of the WRC9/10 settings file use a different key, attempting to fix..." << std::endl;
 
 					//Revert default xor
 					XorData(DEFAULT_XOR_KEY, std::span<uint8_t>(fileData+fileSize-5, 5), fileSize-5);
@@ -375,4 +375,8 @@ int main(int argc, char** argv)
 			std::cerr << "Encrypted settings file was missing, skipping..." << std::endl;
 		}
 	}
+
+	std::cout << "All done :) Please do not sell any mods made with the help of this tool. Thank you and happy modding!" << std::endl;
+
+	return 0;
 }
