@@ -7,6 +7,7 @@
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 #include <lz4frame.h>
+#include <unordered_map>
 
 #pragma pack(push, 1)
 struct PPKGHeader
@@ -43,10 +44,41 @@ enum GameGeneration
 	GG_UNKNOWN = 0,
 	GG_WRC9,
 	GG_WRC10,
-	GG_WRCG
+	GG_WRCG,
+	GG_TDUSC,
 };
 
 const std::string DEFAULT_XOR_KEY = "14F5FsyDFFUC4NVANPpYggyakreWkJfy";
+
+const std::unordered_map<GameGeneration, std::string> GAME_SPECIFIC_XOR_KEYS = {
+	{GG_TDUSC, "oL7bFfNRojSzr4y7t6s7wWMIA0w03zDz"}
+};
+
+std::string DEFAULT_PUBLIC_KEY =
+"-----BEGIN PUBLIC KEY-----\r\n"
+"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAohx1scPAXQSAF4E7wuEz\r\n"
+"ehIAiCiU9OMFGvCLoSmtQUOCQDPqY3bykOKBMqGJKQ7yaf55jiJHaW3lCZkWLOBO\r\n"
+"46pAUOtoxVeQ9+4M4BmCUalTwWq/SsCc/JuEl6j+7DK1sGBAcjz/uyxvmVa85TtO\r\n"
+"zDXEc2oDBhoNdg1AcMnwU7PQsdON/qiI7UIZ4JZ7QzoAklvA3GBdT93ln6UVy5U2\r\n"
+"KWj8pCwMcVEJ5UOxdGWCebTvF7yxvPo+6AhkFUyrZ1lOWA6kgu8z3xzdnBet/fzf\r\n"
+"+nHQZ5eT09ackoWjuGe6rFxAcEqVb80KqkPjqTIoKprkegl78yXeewraegjEXzZj\r\n"
+"ywIDAQAB\r\n"
+"-----END PUBLIC KEY-----";
+
+const std::unordered_map<GameGeneration, std::string> GAME_SPECIFIC_PUBLIC_KEYS = {
+	{GG_TDUSC, "-----BEGIN PUBLIC KEY-----\r\n"
+				"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8Gh57bHJCMIeJRkhfY24\r\n"
+				"TZqgOrOSG7E9nZ5cgKogqFlNEDUwleN9cPqB1EkBgPGaCuHkTU8z9dJDkOa7OAUg\r\n"
+				"aQy2ehvX4RxN6ngzBD078NQFDFsZ0B5NXsX+UhlIdSuFEETlhexHQ2SG4HxdVnAg\r\n"
+				"8Ha/xaxRhpYcBx7NDOGboUao7CMEajnlx+S90nq8hX7or9mTD4gKlcH2yjNeWPh+\r\n"
+				"HSYYPUcCaYpb/wr5x4rVfh4d0oiIhf4UMY9uTXHLsZFyGi6D2MZbDwIJKf0ATNQV\r\n"
+				"Xvlao6tSZ+vW/Pf8KgQsWqgycTNoHnDzxTCasS3a1tGD1P2XqK7TImaBojBZwBjK\r\n"
+				"OwIDAQAB\r\n"
+				"-----END PUBLIC KEY-----" }
+};
+
+std::string xorKey = DEFAULT_XOR_KEY;
+std::string publicKey = DEFAULT_PUBLIC_KEY;
 
 inline void XorData(const std::string_view xorKey, std::span<uint8_t> data, size_t keyOffset = 0)
 {
@@ -74,9 +106,12 @@ int main(int argc, char** argv)
 	{
 		gameGeneration = GG_WRC9;
 	}
+	else if(std::filesystem::exists(basePath / "TDUSC.exe")) {
+		gameGeneration = GG_TDUSC;
+	}
 	else
 	{
-		std::cerr << "Unpackager must be run from within the same folder as the game's main exe file (WRCG.exe/WRC10.exe/WRC9.exe)\n" << "Press enter to exit..." << std::endl;
+		std::cerr << "Unpackager must be run from within the same folder as the game's main exe file (WRCG.exe/WRC10.exe/WRC9.exe/TDUSC.exe)\n" << "Press enter to exit..." << std::endl;
 		std::cin.ignore(99999, '\n');
 		return 1;
 	}
@@ -84,6 +119,14 @@ int main(int argc, char** argv)
 	if(gameGeneration != GG_WRCG)
 	{
 		std::cout << "Warning: Support for versions other than WRCG is experimental and may not work correctly. Use as your own risk" << std::endl;
+	}
+
+	if (GAME_SPECIFIC_XOR_KEYS.find(gameGeneration) != GAME_SPECIFIC_XOR_KEYS.end()) {
+		xorKey = GAME_SPECIFIC_XOR_KEYS.at(gameGeneration);
+	}
+
+	if (GAME_SPECIFIC_PUBLIC_KEYS.find(gameGeneration) != GAME_SPECIFIC_PUBLIC_KEYS.end()) {
+		publicKey = GAME_SPECIFIC_PUBLIC_KEYS.at(gameGeneration);
 	}
 
 	const auto pkgsFolder = basePath / "WIN32" / "PKG";
@@ -118,7 +161,6 @@ int main(int argc, char** argv)
 
 		infile.read((char*)&dataBuf[0], 0x30);
 
-		std::string xorKey = DEFAULT_XOR_KEY;
 		size_t headerOffset = 0;
 
 		if(gameGeneration >= GG_WRC10)
@@ -137,22 +179,11 @@ int main(int argc, char** argv)
 				dataBuf[i] ^= xorKey[i%xorKey.size()];
 			}
 
-			std::string publicKey =
-				"-----BEGIN PUBLIC KEY-----\r\n"
-				"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAohx1scPAXQSAF4E7wuEz\r\n"
-				"ehIAiCiU9OMFGvCLoSmtQUOCQDPqY3bykOKBMqGJKQ7yaf55jiJHaW3lCZkWLOBO\r\n"
-				"46pAUOtoxVeQ9+4M4BmCUalTwWq/SsCc/JuEl6j+7DK1sGBAcjz/uyxvmVa85TtO\r\n"
-				"zDXEc2oDBhoNdg1AcMnwU7PQsdON/qiI7UIZ4JZ7QzoAklvA3GBdT93ln6UVy5U2\r\n"
-				"KWj8pCwMcVEJ5UOxdGWCebTvF7yxvPo+6AhkFUyrZ1lOWA6kgu8z3xzdnBet/fzf\r\n"
-				"+nHQZ5eT09ackoWjuGe6rFxAcEqVb80KqkPjqTIoKprkegl78yXeewraegjEXzZj\r\n"
-				"ywIDAQAB\r\n"
-				"-----END PUBLIC KEY-----";
-
 			BIO *bio = BIO_new_mem_buf((void*)publicKey.c_str(), publicKey.size());
 			RSA *rsa = PEM_read_bio_RSA_PUBKEY(bio, nullptr, nullptr, nullptr);
 			if(!rsa)
 			{
-				std::cerr << "Could not decode public key, skipping this package..." << std::endl;
+				std::cerr << "Could not decode public key, skipping this package... (Package: " << pkgFiles[pkgIndex] << ")" << std::endl;
 				continue;
 			}
 
@@ -161,7 +192,7 @@ int main(int argc, char** argv)
 
 			if(decryptedSize < 0)
 			{
-				std::cerr << "Could not decrypt data, skipping this package..." << std::endl;
+				std::cerr << "Could not decrypt data, skipping this package... (Package: " << pkgFiles[pkgIndex] << ")" << std::endl;
 				continue;
 			}
 
@@ -227,17 +258,18 @@ int main(int argc, char** argv)
 			//some sort of checksum and or signature
 			switch(gameGeneration)
 			{
-				case GG_WRC9:
-				case GG_WRC10:
-				{
-					remainingFileHeadersData = remainingFileHeadersData.subspan(0x28);
-				}
-				break;
-				case GG_WRCG:
-				{
-					remainingFileHeadersData = remainingFileHeadersData.subspan(0x30);
-				}
-				break;
+			case GG_WRC9:
+			case GG_WRC10:
+			{
+				remainingFileHeadersData = remainingFileHeadersData.subspan(0x28);
+			}
+			break;
+			case GG_WRCG:
+			case GG_TDUSC:
+			{
+				remainingFileHeadersData = remainingFileHeadersData.subspan(0x30);
+			}
+			break;
 			}
 
 			pkgFileMetadata.push_back(std::move(meta));
@@ -348,14 +380,14 @@ int main(int argc, char** argv)
 				infile.read((char*)fileData, fileSize);
 				infile.close();
 
-				XorData(DEFAULT_XOR_KEY, std::span<uint8_t>(fileData, fileSize));
+				XorData(xorKey, std::span<uint8_t>(fileData, fileSize));
 
 				if(gameGeneration == GG_WRC10 || gameGeneration == GG_WRC9)
 				{
 					std::cout << "For some reason the last 5 bytes of the WRC9/10 settings file use a different key, attempting to fix..." << std::endl;
 
 					//Revert default xor
-					XorData(DEFAULT_XOR_KEY, std::span<uint8_t>(fileData+fileSize-5, 5), fileSize-5);
+					XorData(xorKey, std::span<uint8_t>(fileData+fileSize-5, 5), fileSize-5);
 
 					XorData("NPpYg", std::span<uint8_t>(fileData+fileSize-5, 5));
 				}
